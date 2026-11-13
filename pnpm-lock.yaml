@@ -4,6 +4,9 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+overrides:
+  wasm-feature-detect: 1.8.0
+
 importers:
 
   .:
@@ -3923,8 +3926,8 @@ packages:
       jsdom:
         optional: true
 
-  wasm-feature-detect@1.10.0:
-    resolution: {integrity: sha512-u0tkTCCo8s7xa9UoE2rtZGRYXTSqYx3kRPJ2XkbyYl2AbnMggSFmYNiJIispzzCPz7SIFTBTPTk0nI8yXwJgvA==}
+  wasm-feature-detect@1.8.0:
+    resolution: {integrity: sha512-zksaLKM2fVlnB5jQQDqKXXwYHLQUVH9es+5TOOHwGOVJOCeRBCiPjwSg+3tN2AdTCzjgli4jijCH290kXb/zWQ==}
 
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
@@ -7869,7 +7872,7 @@ snapshots:
       opencollective-postinstall: 2.0.3
       regenerator-runtime: 0.13.11
       tesseract.js-core: 6.1.2
-      wasm-feature-detect: 1.10.0
+      wasm-feature-detect: 1.8.0
       zlibjs: 0.3.1
     transitivePeerDependencies:
       - encoding
@@ -8073,7 +8076,7 @@ snapshots:
     transitivePeerDependencies:
       - msw
 
-  wasm-feature-detect@1.10.0: {}
+  wasm-feature-detect@1.8.0: {}
 
   web-namespaces@2.0.1: {}
 

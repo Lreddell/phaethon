@@ -170,7 +170,7 @@ describe("attachments", () => {
     fs.mkdirSync(day, { recursive: true });
     symlink(path.join(outside, "planted.md"), path.join(day, "notes.md"));
     const refs = saveUploadsIn(space, [up("notes.md", "", "mine")]);
-    expect((refs[0]!.path as string).endsWith("/notes (2).md")).toBe(true);
+    expect(path.basename(refs[0]!.path as string)).toBe("notes (2).md");
     expect(fs.existsSync(path.join(outside, "planted.md"))).toBe(false);
     fs.rmSync(path.join(space, FOLDER), { recursive: true });
     symlink(outside, path.join(space, FOLDER));

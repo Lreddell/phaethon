@@ -80,7 +80,7 @@ beforeAll(async () => {
     const f = path.join(school, `.phaethon/threads/${id === "1758000000000" ? `${id}-1` : id}.json`);
     fs.utimesSync(f, new Date(), new Date(Number(id)));
   }
-  written = new Map(files.map(([p, t]) => [p, t]));
+  written = new Map(files.map(([p, t]) => [fs.realpathSync.native(p), t]));
   await runStart();
 });
 

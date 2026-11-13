@@ -52,7 +52,7 @@ describe("sign-in", () => {
     const n = log.runs() + 1;
     expect(await call("agent_cli_sign_in", { cli: "gemini" })).toEqual({ status: "signedIn", message: "Signed in to Gemini CLI for this Phaethon folder." });
     expect(log.text(`consent-${n}`)).toBe("y\n");
-    expect(log.env(n)).toMatchObject({ GEMINI_CLI_HOME: home, GEMINI_CLI_TRUST_WORKSPACE: "true", cwd: path.join(home, "sign-in") });
+    expect(log.env(n)).toMatchObject({ GEMINI_CLI_HOME: home, GEMINI_CLI_TRUST_WORKSPACE: "true", cwd: fs.realpathSync.native(path.join(home, "sign-in")) });
     expect(log.args(n).slice(0, 2)).toEqual(["--output-format", "text"]);
     expect(JSON.parse(fs.readFileSync(path.join(home, ".gemini", "settings.json"), "utf8"))).toEqual({ security: { auth: { selectedType: "oauth-personal" } } });
     process.env.FAKE_SIGN_IN = "fail";
