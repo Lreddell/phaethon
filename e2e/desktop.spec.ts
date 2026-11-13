@@ -8,11 +8,12 @@ import { _electron as electron, expect, test } from "@playwright/test";
 test("the desktop window becomes visible and connects to its core", async () => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "phaethon-desktop-e2e-"));
   const root = path.resolve(import.meta.dirname, "..");
+  // Match Playwright's sandbox setting on both launches; Xvfb also needs software rendering.
+  const args = [...(process.platform === "linux" ? ["--no-sandbox", "--disable-gpu"] : []), root, `--user-data-dir=${path.join(home, "profile")}`];
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     app = await electron.launch({
-      // Xvfb has no hardware GPU; use Chromium's software renderer there.
-      args: [...(process.platform === "linux" ? ["--disable-gpu"] : []), root, `--user-data-dir=${path.join(home, "profile")}`],
+      args,
       env: {
         ...process.env,
         PHAETHON_HOME: home,
@@ -44,12 +45,17 @@ test("the desktop window becomes visible and connects to its core", async () => 
     await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].hide());
     // Playwright's ChildProcess may be a cmd.exe wrapper on Windows.
     const executable = await app.evaluate(() => process.execPath);
-    const second = spawn(executable, [root, `--user-data-dir=${path.join(home, "profile")}`], {
+    const second = spawn(executable, args, {
       env: { ...process.env, PHAETHON_HOME: home, PHAETHON_APP_DATA: path.join(home, "appdata"), PHAETHON_TEST: "1", PHAETHON_KEYRING: "memory" },
-      stdio: "ignore", windowsHide: true,
+      stdio: ["ignore", "ignore", "pipe"], windowsHide: true, timeout: 10_000,
     });
-    const secondCode = await new Promise<number | null>((resolve, reject) => { second.once("exit", resolve); second.once("error", reject); });
-    expect(secondCode).toBe(0);
+    let secondStderr = "";
+    second.stderr!.on("data", (chunk: Buffer) => { secondStderr = (secondStderr + chunk.toString()).slice(-16_000); });
+    const secondExit = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+      second.once("exit", (code, signal) => resolve({ code, signal }));
+      second.once("error", reject);
+    });
+    expect(secondExit, secondStderr).toEqual({ code: 0, signal: null });
     await expect.poll(() => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible()), { timeout: 5000 }).toBe(true);
   } catch (error) {
     if (app) {
