@@ -129,6 +129,9 @@ export function serve(options: ServeOptions): Promise<{ port: number; close: () 
             for (const client of wss.clients) client.terminate();
             wss.close();
             server.close(() => done());
+            // Browsers preconnect sockets without sending headers. close()
+            // alone can wait for those forever; shutdown owns these sockets.
+            server.closeAllConnections();
           }),
       });
     });

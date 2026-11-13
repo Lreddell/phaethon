@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
+import net from "node:net";
 import { command, Refusal } from "../src/server/rpc/registry.ts";
 import type { Channel } from "../src/server/rpc/channel.ts";
 import { serve } from "../src/server/rpc/server.ts";
@@ -24,6 +25,22 @@ beforeAll(async () => {
 afterAll(() => server.close());
 
 describe("wire", () => {
+  it("closes an unused browser preconnection without waiting for request headers", async () => {
+    const idle = await serve({ host: "127.0.0.1", port: 0, token, origins: [] });
+    const socket = net.connect(idle.port, "127.0.0.1");
+    await new Promise<void>((resolve, reject) => { socket.once("connect", resolve); socket.once("error", reject); });
+    const closed = idle.close();
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const stopped = await Promise.race([closed.then(() => true), new Promise<boolean>((resolve) => { timer = setTimeout(() => resolve(false), 1000); })]);
+      expect(stopped).toBe(true);
+    } finally {
+      clearTimeout(timer);
+      socket.destroy();
+      await closed;
+    }
+  });
+
   it("answers a command and refuses with the plain message", async () => {
     const client = await wsClient(server.port, token);
     expect(await client.invoke("test_echo", { text: "hi" })).toMatchObject({ t: "ok", value: "hi" });
