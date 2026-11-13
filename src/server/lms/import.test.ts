@@ -1,3 +1,4 @@
+import { symlink } from "../../../tests/fs.ts";
 import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo, Socket } from "node:net";
@@ -260,7 +261,7 @@ describe("importer", () => {
     if (process.platform !== "win32") {
       const outside = path.join(f.root, "outside");
       fs.mkdirSync(outside);
-      fs.symlinkSync(outside, path.join(courses, "Linked"));
+      symlink(outside, path.join(courses, "Linked"));
       const c = { ...course(), name: "Linked", code: null };
       await expect(importCourse(f.session, courses, c, emptyContent(), undefined, [], opts(), none)).rejects.toThrow();
       expect(fs.readdirSync(outside).length).toBe(0);

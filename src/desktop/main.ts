@@ -117,7 +117,8 @@ function createMainWindow(): BrowserWindow {
     minHeight: min.height,
     title: "Phaethon",
     show: false,
-    paintWhenInitiallyHidden: Boolean(captureTo),
+    // ready-to-show needs the initial hidden window to paint before it is shown.
+    paintWhenInitiallyHidden: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#17171a" : "#fafafa",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
     webPreferences: {

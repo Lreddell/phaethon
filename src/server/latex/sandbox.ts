@@ -1,6 +1,11 @@
-import path from "node:path";
-import { isWithin } from "../core/fsx.ts";
+import { posix as path } from "node:path";
 import { CPU_SECONDS, MAX_FILE, type Engine } from "./tex.ts";
+
+// These builders describe POSIX hosts even when inspected by Windows tests.
+function isWithin(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === "" || (rel !== ".." && !rel.startsWith("../") && !path.isAbsolute(rel));
+}
 
 /**
  * The walls TeX runs inside. TeX is written by a model, so it is untrusted:
