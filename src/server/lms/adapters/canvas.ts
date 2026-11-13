@@ -295,33 +295,33 @@ async function content(s: Session, courseId: string): Promise<CourseContent> {
     }
   }
 
-  // A hidden Pages tab needn't hide the home page, or pages linked from it.
+  // The page index can be hidden or refused while the home page stays open.
   // Follow only this course's published page references, with a finite budget
   // and a visited set that also remembers refused/missing pages.
-  if (!tabs.open("pages")) {
-    const front = await part(s, () => getOne(s, api(s, ["courses", cid, "front_page"], [])), "", []);
-    const slug = asString(field(front, "url"));
-    if (slug && !pages.some(([key]) => key === slug)) pageInto(s, cid, slug, front, pages, c.skipped);
-  }
+  const front = await part(s, () => getOne(s, api(s, ["courses", cid, "front_page"], [])), "", []);
+  const frontSlug = asString(field(front, "url"));
+  if (frontSlug && !pages.some(([key]) => key === frontSlug)) pageInto(s, cid, frontSlug, front, pages, c.skipped);
   const visitedPages = new Set(pages.map(([slug]) => slug));
-  const pageTexts: [string, URL][] = [];
-  if (c.syllabus !== null) pageTexts.push([c.syllabus, site(s, ["courses", cid, "assignments", "syllabus"])]);
-  pageTexts.push(...assignments.map(([, a]): [string, URL] => [a.html, a.url ?? s.site.base]), ...c.announcements.map((a): [string, URL] => [a.html, s.site.base]));
+  const pageUrls = links.map((l) => l.url);
+  const queuePages = (html: string, base: URL) => {
+    for (const url of resourceUrls(html, base)) pageUrls.push(url);
+  };
+  if (c.syllabus !== null) queuePages(c.syllabus, site(s, ["courses", cid, "assignments", "syllabus"]));
+  for (const [, a] of assignments) queuePages(a.html, a.url ?? s.site.base);
+  for (const a of c.announcements) queuePages(a.html, s.site.base);
   let scannedPages = 0;
   for (let i = 0; ; i++) {
     while (scannedPages < pages.length) {
       const [, p] = pages[scannedPages++];
-      pageTexts.push([p.html, p.url ?? s.site.base]);
+      queuePages(p.html, p.url ?? s.site.base);
     }
-    if (i >= pageTexts.length) break;
-    for (const u of resourceUrls(...pageTexts[i])) {
-      const slug = pageRef(s, cid, u);
-      if (slug === null || visitedPages.has(slug)) continue;
-      if (visitedPages.size >= MAX_REFERENCED) throw LmsError.incomplete(`Canvas references more than ${MAX_REFERENCED} distinct pages. The page list is incomplete; the import was not marked complete.`);
-      visitedPages.add(slug);
-      const v = await part(s, () => getOne(s, api(s, ["courses", cid, "pages", slug], [])), `Page “${slug}”`, c.skipped);
-      if (v !== undefined) pageInto(s, cid, slug, v, pages, c.skipped);
-    }
+    if (i >= pageUrls.length) break;
+    const slug = pageRef(s, cid, pageUrls[i]);
+    if (slug === null || visitedPages.has(slug)) continue;
+    if (visitedPages.size >= MAX_REFERENCED) throw LmsError.incomplete(`Canvas references more than ${MAX_REFERENCED} distinct pages. The page list is incomplete; the import was not marked complete.`);
+    visitedPages.add(slug);
+    const v = await part(s, () => getOne(s, api(s, ["courses", cid, "pages", slug], [])), `Page “${slug}”`, c.skipped);
+    if (v !== undefined) pageInto(s, cid, slug, v, pages, c.skipped);
   }
 
   // Files the course's own text links to (a syllabus pointing at the schedule PDF),
@@ -329,13 +329,12 @@ async function content(s: Session, courseId: string): Promise<CourseContent> {
   const html: string[] = [];
   if (c.syllabus !== null) html.push(c.syllabus);
   html.push(...pages.map(([, p]) => p.html), ...assignments.map(([, a]) => a.html), ...c.announcements.map((a) => a.html));
-  const wanted: [boolean, string][] = [];
-  for (const h of html) {
-    for (const r of fileRefs(s, cid, h)) {
-      if (!files.has(r[1]) && !wanted.some((w) => w[1] === r[1])) wanted.push(r);
-    }
+  const wanted = new Map<string, [boolean, string]>();
+  for (const u of [...links.map((l) => l.url), ...html.flatMap((h) => resourceUrls(h, s.site.base))]) {
+    const r = fileRef(s, cid, u);
+    if (r && !files.has(r[1]) && !wanted.has(r[1])) wanted.set(r[1], r);
   }
-  for (const [inCourse, id] of wanted) {
+  for (const [inCourse, id] of wanted.values()) {
     if (!files.request(id)) continue;
     const url = inCourse ? api(s, ["courses", cid, "files", id], []) : api(s, ["files", id], []);
     const v = await part(s, () => getOne(s, url), `A linked file (number ${id})`, c.skipped);
@@ -625,21 +624,17 @@ function folderPaths(list: unknown[]): Map<string, string | null> {
   return out;
 }
 
-/** File ids that links and images in `html` point at on this site: `[in this course, id]`. */
-function fileRefs(s: Session, cid: string, html: string): [boolean, string][] {
-  const out: [boolean, string][] = [];
-  for (const u of resourceUrls(html, s.site.base)) {
-    if (!s.site.owns(u)) continue;
-    const segs = u.pathname.split("/").slice(1);
-    let found: [boolean, string] | null = null;
-    if (segs.length >= 6 && segs[0] === "api" && segs[1] === "v1" && segs[2] === "courses" && segs[4] === "files") found = [segs[3] === cid, segs[5]];
-    else if (segs.length >= 4 && segs[0] === "courses" && segs[2] === "files") found = [segs[1] === cid, segs[3]];
-    else if (segs.length >= 4 && segs[0] === "api" && segs[1] === "v1" && segs[2] === "files") found = [false, segs[3]];
-    else if (segs.length >= 2 && segs[0] === "files") found = [false, segs[1]];
-    else if (segs.length >= 4 && segs[0] === "users" && segs[2] === "files") found = [false, segs[3]];
-    if (found && /^[0-9]+$/.test(found[1]) && !out.some(([, x]) => x === found![1])) out.push(found);
-  }
-  return out;
+/** A file reference on this site: `[in this course, id]`. */
+function fileRef(s: Session, cid: string, u: URL): [boolean, string] | null {
+  if (!s.site.owns(u)) return null;
+  const segs = u.pathname.split("/").slice(1);
+  let found: [boolean, string] | null = null;
+  if (segs.length >= 6 && segs[0] === "api" && segs[1] === "v1" && segs[2] === "courses" && segs[4] === "files") found = [segs[3] === cid, segs[5]];
+  else if (segs.length >= 4 && segs[0] === "courses" && segs[2] === "files") found = [segs[1] === cid, segs[3]];
+  else if (segs.length >= 4 && segs[0] === "api" && segs[1] === "v1" && segs[2] === "files") found = [false, segs[3]];
+  else if (segs.length >= 2 && segs[0] === "files") found = [false, segs[1]];
+  else if (segs.length >= 4 && segs[0] === "users" && segs[2] === "files") found = [false, segs[3]];
+  return found && /^[0-9]+$/.test(found[1]) ? found : null;
 }
 
 /** A page on this course; other courses and origins are never traversed. */

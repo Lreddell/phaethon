@@ -274,6 +274,48 @@ describe("canvas courses and content", () => {
     expect(await errKind(canvas.content(s, ""))).toBe("notFound");
   });
 
+  it("imports a reachable home page even when the visible Pages list is refused", async () => {
+    const f = await fake((u, b) => {
+      switch (u.pathname) {
+        case "/api/v1/courses/1001": return json({});
+        case "/api/v1/courses/1001/tabs": return json([{ id: "pages" }]);
+        case "/api/v1/courses/1001/folders": return json([]);
+        case "/api/v1/courses/1001/pages": return reply(403, UNAUTHORIZED);
+        case "/api/v1/courses/1001/front_page": return json({ url: "home", title: "Home", body: '<a href="/courses/1001/files/7">Slides</a>' });
+        case "/api/v1/courses/1001/files/7": return json({ id: 7, display_name: "slides.pdf", url: `${b}/files/7/download` });
+        default: return status(404);
+      }
+    });
+    const c = await canvas.content(session(f.base), "1001");
+    expect(c.pages.map((p) => p.title)).toEqual(["Home"]);
+    expect(c.files.map((f) => f.name)).toEqual(["slides.pdf"]);
+  });
+
+  it("discovers same-course files and pages added to modules as URL links", async () => {
+    const f = await fake((u, b) => {
+      switch (u.pathname) {
+        case "/api/v1/courses/1001": return json({});
+        case "/api/v1/courses/1001/tabs": return json([{ id: "modules" }]);
+        case "/api/v1/courses/1001/folders": return json([]);
+        case "/api/v1/courses/1001/modules": return json([{ name: "Week 1", items: [
+          { type: "ExternalUrl", title: "Slides", external_url: `${b}/courses/1001/files/7` },
+          { type: "ExternalUrl", title: "Readings", external_url: `${b}/courses/1001/pages/week-1` },
+          { type: "ExternalUrl", title: "Other course", external_url: `${b}/courses/2002/pages/private` },
+          { type: "ExternalUrl", title: "Publisher", external_url: "https://publisher.example/files/9" },
+        ] }]);
+        case "/api/v1/courses/1001/pages/week-1": return json({ title: "Readings", body: '<a href="/courses/1001/files/8">Notes</a>' });
+        case "/api/v1/courses/1001/files/7": return json({ id: 7, display_name: "slides.pdf", url: `${b}/files/7/download` });
+        case "/api/v1/courses/1001/files/8": return json({ id: 8, display_name: "notes.pdf", url: `${b}/files/8/download` });
+        default: return status(404);
+      }
+    });
+    const c = await canvas.content(session(f.base), "1001");
+    expect(c.pages.map((p) => p.title)).toEqual(["Readings"]);
+    expect(c.files.map((f) => f.name).sort()).toEqual(["notes.pdf", "slides.pdf"]);
+    expect(c.links.some((l) => l.title === "Publisher")).toBe(true);
+    expect(f.log.some((r) => r.target.includes("private"))).toBe(false);
+  });
+
   it("link headers, times and folders", () => {
     const { nextLink, unix, folderPaths } = canvasInternals;
     expect(nextLink('<https://x/a?page=1>; rel="current", <https://x/a?page=2&per_page=100>; rel="next", <https://x/a?page=9>; rel="last"')).toBe("https://x/a?page=2&per_page=100");

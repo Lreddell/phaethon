@@ -373,6 +373,31 @@ function downloaded(got: Got): FileRec {
 }
 
 describe("one course file", () => {
+  it.each([["lecture.pdf", "application/pdf"], ["source.c", "text/plain"], ["lecture.pdf", null]] as const)("keeps %s when the download redirects to a sign-in webpage", async (name, mime) => {
+    const f = await fixture("login-instead-of-file");
+    const pdf = testPdf("Keep this course document");
+    f.site.route("/source", ok("application/pdf", pdf));
+    const remote = file(name, null, j(f.s, "/source"), pdf.length, []);
+    remote.mime = mime;
+    const rel = `files/${name}`;
+    const old = downloaded(await fetchFile(f.session, f.root, remote, rel, undefined, opts()));
+    f.site.route("/source", { status: 302, headers: { Location: "/login" }, body: Buffer.alloc(0) });
+    f.site.route("/login", ok("text/html ; charset=utf-8", "<html><form>Sign in</form></html>"));
+    const got = await fetchFile(f.session, f.root, remote, rel, old, opts());
+    expect(got).toMatchObject({ kind: "skipped", why: expect.stringContaining("webpage") });
+    expect(fs.readFileSync(path.join(f.root, rel)).equals(pdf)).toBe(true);
+  });
+
+  it("still imports a course HTML document", async () => {
+    const f = await fixture("html-course-file");
+    const body = "<html><h1>A course reading</h1></html>";
+    f.site.route("/source", ok("text/html", body));
+    const remote = file("reading.html", null, j(f.s, "/source"), null, []);
+    remote.mime = "text/html";
+    expect((await fetchFile(f.session, f.root, remote, "files/reading.html", undefined, opts())).kind).toBe("written");
+    expect(read(path.join(f.root, "files/reading.html"))).toBe(body);
+  });
+
   it("a corrupted source is repaired despite the same listing version", async () => {
     const f = await fixture("corrupt-version");
     f.site.route("/source", ok("text/plain", "source"));
