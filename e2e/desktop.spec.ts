@@ -10,7 +10,8 @@ test("the desktop window becomes visible and connects to its core", async () => 
   let app: Awaited<ReturnType<typeof electron.launch>> | undefined;
   try {
     app = await electron.launch({
-      args: [root, `--user-data-dir=${path.join(home, "profile")}`],
+      // Xvfb has no hardware GPU; use Chromium's software renderer there.
+      args: [...(process.platform === "linux" ? ["--disable-gpu"] : []), root, `--user-data-dir=${path.join(home, "profile")}`],
       env: {
         ...process.env,
         PHAETHON_HOME: home,
@@ -23,11 +24,17 @@ test("the desktop window becomes visible and connects to its core", async () => 
       },
     });
     const page = await app.firstWindow();
-    await expect.poll(() => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible())).toBe(true);
+    await expect.poll(() => app!.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.isVisible()), { timeout: 20_000 }).toBe(true);
     await expect(page.getByRole("heading", { name: "Welcome to Phaethon" })).toBeVisible();
     await expect(page.getByRole("listitem")).toHaveText([/School$/, /Work$/]);
     await page.getByRole("button", { name: "Get started" }).click();
     await expect(page.getByRole("heading", { name: "Choose how Phaethon answers" })).toBeVisible();
+  } catch (error) {
+    if (app) {
+      const windows = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((w) => ({ visible: w.isVisible(), url: w.webContents.getURL(), loading: w.webContents.isLoading(), crashed: w.webContents.isCrashed() }))).catch(() => []);
+      await test.info().attach("desktop-startup", { body: JSON.stringify(windows), contentType: "application/json" });
+    }
+    throw error;
   } finally {
     await app?.close();
     fs.rmSync(home, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
